@@ -5,7 +5,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 from datetime import datetime
-
+from .drive_service import get_drive_service, get_or_create_root_folder
 # Import the database helper we created in app/database.py
 from .database import get_user_collection
 
@@ -74,9 +74,20 @@ async def callback(code: str):
             },
             upsert=True 
         )
+        print("--- DEBUG: Initializing Drive Service ---")
+        drive_service = get_drive_service({
+            "access_token": creds.token,
+            "refresh_token": creds.refresh_token
+        })
+        
+        root_id = await get_or_create_root_folder(drive_service)
+        await users.update_one(
+            {"google_id": user_info['id']},
+            {"$set": {"root_folder_id": root_id}}
+        )
         print("--- DEBUG: Database update complete! ---")
 
-        return {"status": "User Authenticated & Saved to DB!", "user": user_info['email']}
+        return {"status": "User Authenticated & Saved to DB!", "user": user_info['email'],"root_id": root_id}
 
     except Exception as e:
         print(f"!!! CRITICAL ERROR: {str(e)}")
