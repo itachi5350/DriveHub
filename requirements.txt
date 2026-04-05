@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+python-multipart
+python-dotenv
+google-api-python-client
+google-auth-oauthlib
+motor  # This is the MongoDB driver
+pydantic[email]
