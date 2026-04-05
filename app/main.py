@@ -5,10 +5,13 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 from datetime import datetime
-from .drive_service import get_drive_service, get_or_create_root_folder
+from .drive_service import get_drive_service, get_or_create_root_folder,create_repository_folder
 # Import the database helper we created in app/database.py
 from .database import get_user_collection
-
+from pydantic import BaseModel
+class RepoCreateRequest(BaseModel):
+    email: str
+    repo_name: str
 load_dotenv()
 
 app = FastAPI(title="DriveHub API")
@@ -93,6 +96,40 @@ async def callback(code: str):
         print(f"!!! CRITICAL ERROR: {str(e)}")
         return {"error": "Internal Server Error", "details": str(e)}
 
+@app.post("/api/repositories/create")
+async def create_repository(request: RepoCreateRequest):
+    try:
+        # 1. Find the user in the database
+        users = get_user_collection()
+        user = await users.find_one({"email": request.email})
+        
+        if not user:
+            return {"error": "User not found"}
+        
+        if "root_folder_id" not in user:
+            return {"error": "Root folder not setup for this user. Please log in again."}
+
+        # 2. Re-initialize the Drive Service using their saved tokens
+        drive_service = get_drive_service({
+            "access_token": user["access_token"],
+            "refresh_token": user["refresh_token"]
+        })
+        
+        # 3. Create the folder inside their Root Folder
+        new_repo_id = await create_repository_folder(
+            service=drive_service, 
+            folder_name=request.repo_name, 
+            parent_id=user["root_folder_id"]
+        )
+        
+        return {
+            "status": "Repository Created Successfully!",
+            "repo_name": request.repo_name,
+            "drive_folder_id": new_repo_id
+        }
+
+    except Exception as e:
+        return {"error": "Failed to create repository", "details": str(e)}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

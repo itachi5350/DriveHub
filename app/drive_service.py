@@ -40,3 +40,21 @@ async def get_or_create_root_folder(service):
         }
         file = service.files().create(body=folder_metadata, fields='id').execute()
         return file.get('id')
+async def create_repository_folder(service, folder_name, parent_id):
+    """
+    Creates a new folder inside the DriveHub_Root directory.
+    """
+    print(f"--- DEBUG: Creating repo '{folder_name}' inside parent '{parent_id}' ---")
+    
+    file_metadata = {
+        'name': folder_name,
+        'parents': [parent_id], # This is the magic line that puts it INSIDE the root folder
+        'mimeType': 'application/vnd.google-apps.folder'
+    }
+    
+    try:
+        file = service.files().create(body=file_metadata, fields='id').execute()
+        return file.get('id')
+    except Exception as e:
+        print(f"!!! ERROR creating repository: {str(e)}")
+        raise e
