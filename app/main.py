@@ -5,13 +5,18 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from dotenv import load_dotenv
 from datetime import datetime
-from .drive_service import get_drive_service, get_or_create_root_folder,create_repository_folder
+from .drive_service import get_drive_service, get_or_create_root_folder,create_repository_folder,upload_file_to_repo,list_files_in_repo
 # Import the database helper we created in app/database.py
 from .database import get_user_collection
 from pydantic import BaseModel
 class RepoCreateRequest(BaseModel):
     email: str
     repo_name: str
+class FileUploadRequest(BaseModel):
+    email: str
+    repo_id: str  # The ID of the folder we created in the last step
+    file_name: str
+    content: str
 load_dotenv()
 
 app = FastAPI(title="DriveHub API")
@@ -130,6 +135,54 @@ async def create_repository(request: RepoCreateRequest):
 
     except Exception as e:
         return {"error": "Failed to create repository", "details": str(e)}
+@app.post("/api/files/upload")
+async def upload_file(request: FileUploadRequest):
+    try:
+        users = get_user_collection()
+        user = await users.find_one({"email": request.email})
+        
+        if not user:
+            return {"error": "User not found"}
+
+        drive_service = get_drive_service({
+            "access_token": user["access_token"],
+            "refresh_token": user["refresh_token"]
+        })
+        
+        file_id = await upload_file_to_repo(
+            service=drive_service,
+            repo_id=request.repo_id,
+            file_name=request.file_name,
+            content=request.content
+        )
+        
+        return {
+            "status": "File Uploaded Successfully!",
+            "file_name": request.file_name,
+            "drive_file_id": file_id
+        }
+
+    except Exception as e:
+        return {"error": "Upload failed", "details": str(e)}
+@app.get("/api/repositories/{repo_id}/files")
+async def get_repo_files(repo_id: str, email: str):
+    try:
+        users = get_user_collection()
+        user = await users.find_one({"email": email})
+        
+        if not user:
+            return {"error": "User not found"}
+
+        drive_service = get_drive_service({
+            "access_token": user["access_token"],
+            "refresh_token": user["refresh_token"]
+        })
+        
+        files = await list_files_in_repo(drive_service, repo_id)
+        return {"repository_id": repo_id, "files": files}
+
+    except Exception as e:
+        return {"error": "Failed to list files", "details": str(e)}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
