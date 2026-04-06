@@ -17,6 +17,11 @@ class FileUploadRequest(BaseModel):
     repo_id: str  # The ID of the folder we created in the last step
     file_name: str
     content: str
+class CommitRecord(BaseModel):
+    email: str
+    repo_id: str
+    message: str
+    file_id: str
 load_dotenv()
 
 app = FastAPI(title="DriveHub API")
@@ -136,7 +141,7 @@ async def create_repository(request: RepoCreateRequest):
     except Exception as e:
         return {"error": "Failed to create repository", "details": str(e)}
 @app.post("/api/files/upload")
-async def upload_file(request: FileUploadRequest):
+async def upload_file(request: FileUploadRequest,commit_message: str = "Initial upload"):
     try:
         users = get_user_collection()
         user = await users.find_one({"email": request.email})
@@ -155,15 +160,30 @@ async def upload_file(request: FileUploadRequest):
             file_name=request.file_name,
             content=request.content
         )
+        db = get_user_collection().database # Get the database object
+        commits_col = db["commits"]
+        
+        new_commit = {
+            "email": request.email,
+            "repo_id": request.repo_id,
+            "file_name": request.file_name,
+            "file_id": file_id,
+            "message": commit_message,
+            "timestamp": datetime.utcnow()
+        }
+        await commits_col.insert_one(new_commit)
+
         
         return {
-            "status": "File Uploaded Successfully!",
+            "status": "File Uploaded and commit recorded Successfully!",
             "file_name": request.file_name,
-            "drive_file_id": file_id
+            "drive_file_id": file_id,
+            "commit_msg": commit_message
         }
 
     except Exception as e:
         return {"error": "Upload failed", "details": str(e)}
+    
 @app.get("/api/repositories/{repo_id}/files")
 async def get_repo_files(repo_id: str, email: str):
     try:
